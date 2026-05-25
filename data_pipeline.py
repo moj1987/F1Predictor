@@ -60,3 +60,37 @@ def format_time(seconds):
     
     return f"{mins}:{secs_str}"
 
+def calculate_avg_pace(long_runs_df):
+    """
+    Calculates the average FP2 long-run pace for each driver.
+    """
+    # Group by driver and calculate the mean of their lap times
+    avg_pace = long_runs_df.groupby(['Driver', 'Team'])['LapTime_s'].mean().reset_index()
+    
+    # Sort from fastest (lowest time) to slowest
+    avg_pace = avg_pace.sort_values(by='LapTime_s').reset_index(drop=True)
+    
+    # Rename for clarity and format the time for display
+    avg_pace.rename(columns={'LapTime_s': 'FP2_Avg_Pace_s'}, inplace=True)
+    avg_pace['FP2_Avg_Pace_Formatted'] = avg_pace['FP2_Avg_Pace_s'].apply(format_time)
+    
+    return avg_pace
+
+def get_race_results(year, event):
+    """
+    Fetches the final classification (finishing order) of a past race.
+    """
+    print(f"Fetching race results for {year} {event}...")
+    try:
+        session = fastf1.get_session(year, event, 'R')
+        session.load(telemetry=False, weather=False)
+        
+        # session.results contains a DataFrame with the final finishing order
+        results = session.results[['Abbreviation', 'Position', 'TeamName', 'Status']]
+        
+        # 'Abbreviation' is the 3-letter driver code (e.g., VER)
+        results = results.rename(columns={'Abbreviation': 'Driver', 'Position': 'Race_Position'})
+        return results
+    except Exception as e:
+        print(f"Failed to load race results: {e}")
+        return None
