@@ -1,3 +1,4 @@
+import joblib
 import streamlit as st
 import pandas as pd
 from data_pipeline import get_session_laps, clean_laps, extract_long_runs, calculate_avg_pace
@@ -43,8 +44,41 @@ if st.sidebar.button("Analyze FP2 Pace"):
                 display_df = compound_df[['Driver', 'Team', 'Laps_Count', 'FP2_Avg_Pace_Formatted']]
                 st.dataframe(display_df, use_container_width=True)
                 
-                # A separate bar chart for each compound
-                # st.bar_chart(data=compound_df, x='Driver', y='FP2_Avg_Pace_s')
+                            # --- THE DUMB MODEL PREDICTION ---
+            st.markdown("---")
+            st.subheader("🔮 Predicted Race Order (The Dumb Model)")
+            
+            with st.spinner("Fetching historical team data to make prediction..."):
+                from data_pipeline import get_race_results
+                # Fetch last year's results to know how good the car is
+                historical_data = get_race_results(year - 1, event)
+                
+                if historical_data is not None:
+                    # Filter pace_df to only use the fastest tire compound they ran
+                    # (To simplify, we take their fastest overall average pace)
+                    fastest_pace = pace_df.groupby('Driver').first().reset_index()
+                    fastest_pace['Pace_Rank'] = fastest_pace['FP2_Avg_Pace_s'].rank()
+                    
+                    # Prepare the historical team feature
+                    team_history = historical_data.groupby('TeamName')['Race_Position'].mean().reset_index()
+                    team_history.rename(columns={'Race_Position': 'Team_Hist_Pos', 'TeamName': 'Team'}, inplace=True)
+                    
+                    # Combine our features
+                    prediction_df = pd.merge(fastest_pace, team_history, on='Team', how='left')
+                    prediction_df['Team_Hist_Pos'] = prediction_df['Team_Hist_Pos'].fillna(15.0)
+                    
+                    # Load our saved model!
+                    model = joblib.load('dumb_model.pkl')
+                    
+                    # Ask it to predict!
+                    prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Team_Hist_Pos']])
+                    
+                    # Sort by the predicted finish
+                    prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
+                    
+                    # Display the final prediction
+                    st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']])
+
 
         else:
             st.error("Failed to load data. The session might have been rained out or cancelled!")
