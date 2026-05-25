@@ -1,4 +1,5 @@
 import joblib
+import fastf1
 import streamlit as st
 import pandas as pd
 from data_pipeline import get_session_laps, clean_laps, extract_long_runs, calculate_avg_pace
@@ -10,8 +11,21 @@ st.markdown("Analyze Free Practice 2 long-runs to discover the true race pace of
 
 # Sidebar for user inputs
 st.sidebar.header("Select Race Weekend")
+
 year = st.sidebar.selectbox("Year", [2026, 2025, 2024])
-event = st.sidebar.text_input("Event Name (e.g., Japan, Australia)", "Australia")
+
+# Dynamically fetch the F1 schedule for the selected year
+schedule = fastf1.get_event_schedule(year)
+
+# We don't want Pre-Season Testing in our dropdown, just actual races!
+schedule = schedule[schedule['EventFormat'] != 'testing']
+
+# Get a clean list of all Event Names
+event_names = schedule['EventName'].tolist()
+
+# Create a beautiful dropdown menu!
+event = st.sidebar.selectbox("Select Grand Prix", event_names)
+
 
 if st.sidebar.button("Analyze FP2 Pace"):
     with st.spinner(f"Fetching {year} {event} FP2 Data... (FastF1 is downloading telemetry)"):
