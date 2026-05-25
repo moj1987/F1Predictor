@@ -62,16 +62,18 @@ def format_time(seconds):
 
 def calculate_avg_pace(long_runs_df):
     """
-    Calculates the average FP2 long-run pace for each driver.
+    Calculates the average FP2 long-run pace AND lap count for each driver.
     """
-    # Group by driver and calculate the mean of their lap times
-    avg_pace = long_runs_df.groupby(['Driver', 'Team'])['LapTime_s'].mean().reset_index()
+    # Use .agg() to calculate both the mean (average time) AND the count (number of laps)
+    avg_pace = long_runs_df.groupby(['Driver', 'Team', 'Compound'])['LapTime_s'].agg(['mean', 'count']).reset_index()
+    
+    # Rename the new columns so they are easy to read
+    avg_pace.rename(columns={'mean': 'FP2_Avg_Pace_s', 'count': 'Laps_Count'}, inplace=True)
     
     # Sort from fastest (lowest time) to slowest
-    avg_pace = avg_pace.sort_values(by='LapTime_s').reset_index(drop=True)
+    avg_pace = avg_pace.sort_values(by='FP2_Avg_Pace_s').reset_index(drop=True)
     
-    # Rename for clarity and format the time for display
-    avg_pace.rename(columns={'LapTime_s': 'FP2_Avg_Pace_s'}, inplace=True)
+    # Format the time for display
     avg_pace['FP2_Avg_Pace_Formatted'] = avg_pace['FP2_Avg_Pace_s'].apply(format_time)
     
     return avg_pace
