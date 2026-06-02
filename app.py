@@ -99,6 +99,10 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             # Ask it to predict!
                             prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Team_Hist_Pos']])
                             
+                            # Convert the raw scores into an exact 1-N ranking
+                            prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank()
+
+                            
                             # Sort by the predicted finish
                             prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
                             
