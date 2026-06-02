@@ -96,3 +96,14 @@ def get_race_results(year, event):
     except Exception as e:
         print(f"Failed to load race results: {e}")
         return None
+
+def get_qualifying_results(year, event):
+    print(f"Fetching qualifying results for {year} {event}...")
+    try:
+        session = fastf1.get_session(year, event, 'Q')
+        session.load(telemetry=False, weather=False)
+        results = session.results[['Abbreviation', 'Position']]
+        return results.rename(columns={'Abbreviation': 'Driver', 'Position': 'GridPosition'})
+    except Exception as e:
+        print(f"Failed to load qualifying results: {e}")
+        return None

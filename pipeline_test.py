@@ -1,10 +1,10 @@
 import fastf1
-from data_pipeline import get_session_laps, clean_laps, extract_long_runs, calculate_avg_pace, get_race_results
+from data_pipeline import get_session_laps, clean_laps, extract_long_runs, calculate_avg_pace, get_race_results, get_qualifying_results
 from model import build_training_dataset, train_rf_model
 def explore_fastf1_api():
     print("--- 1. EXPLORING FASTF1 API ---")
-    # Load Japan 2026 FP2, but this time we load EVERYTHING (including weather)
-    session = fastf1.get_session(2026, 'Japan', 'FP2')
+    # Load Data
+    session = fastf1.get_session(2026, 'Spain', 'FP2')
     session.load(telemetry=False, weather=True) 
 
     print(f"\nEvent Name: {session.event['EventName']}")
@@ -61,22 +61,26 @@ def test_ml_pipeline():
     
     # Piece A: FP2 Pace 
     print("Fetching 2025 FP2 data...")
-    fp2_2025 = get_session_laps(2025, 'Australia', 'FP2')
+    fp2_2025 = get_session_laps(2025, 'Spain', 'FP2')
     clean_fp2_2025 = clean_laps(fp2_2025)
     long_runs_2025 = extract_long_runs(clean_fp2_2025)
     pace_2025 = calculate_avg_pace(long_runs_2025)
     
     # Piece B: Actual Race Results (Our Answer Key)
     print("Fetching 2025 Race Results...")
-    actual_results_2025 = get_race_results(2025, 'Japan')
+    actual_results_2025 = get_race_results(2025, 'Spain')
     
     # Piece C: Historical Team Performance for 2024 (Our Feature)
     print("Fetching 2024 Race Results (for historical team data)...")
-    historical_results_2024 = get_race_results(2024, 'Japan')
+    historical_results_2024 = get_race_results(2024, 'Spain')
     
-    # Build the Training Dataset
+    print("Fetching 2025 Qualifying Results...")
+    qualy_2025 = get_qualifying_results(2025, 'Spain')
+    
     print("\nBuilding training dataset...")
-    training_df = build_training_dataset(pace_2025, actual_results_2025, historical_results_2024)
+    # Pass quali
+    training_df = build_training_dataset(pace_2025, actual_results_2025, historical_results_2024, qualy_2025)
+
     print("\nTraining Data Preview:")
     print(training_df.head())
     
@@ -85,6 +89,6 @@ def test_ml_pipeline():
     model = train_rf_model(training_df)
 
 if __name__ == "__main__":
-    explore_fastf1_api()
-    test_pipeline()
+    # explore_fastf1_api()
+    # test_pipeline()
     test_ml_pipeline()

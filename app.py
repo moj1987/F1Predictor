@@ -81,14 +81,26 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         fastest_pace = pace_df.groupby('Driver').first().reset_index()
                         fastest_pace['Pace_Rank'] = fastest_pace['FP2_Avg_Pace_s'].rank()
                         
-                        # Prepare the historical driver feature
+                        # 1. Driver History (You already have this!)
                         driver_history = historical_data.groupby('Driver')['Race_Position'].mean().reset_index()
                         driver_history.rename(columns={'Race_Position': 'Driver_Hist_Pos'}, inplace=True)
-                        
-                        # Combine our features (Merge on Driver!)
                         prediction_df = pd.merge(fastest_pace, driver_history, on='Driver', how='left')
                         prediction_df['Driver_Hist_Pos'] = prediction_df['Driver_Hist_Pos'].fillna(15.0)
 
+                        # 2. Team History
+                        team_history = historical_data.groupby('TeamName')['Race_Position'].mean().reset_index()
+                        team_history.rename(columns={'Race_Position': 'Team_Hist_Pos', 'TeamName': 'Team'}, inplace=True)
+                        prediction_df = pd.merge(prediction_df, team_history, on='Team', how='left')
+                        prediction_df['Team_Hist_Pos'] = prediction_df['Team_Hist_Pos'].fillna(15.0)
+
+                        # 3. Grid Position
+                        from data_pipeline import get_qualifying_results
+                        qualy_results = get_qualifying_results(year, event)
+                        if qualy_results is not None and not qualy_results.empty:
+                            prediction_df = pd.merge(prediction_df, qualy_results, on='Driver', how='left')
+                        else:
+                            prediction_df['GridPosition'] = 20.0
+                        prediction_df['GridPosition'] = prediction_df['GridPosition'].fillna(20.0)
                         
                         # Check if the model file actually exists before loading!
                         if not os.path.exists('dumb_model.pkl'):
@@ -97,13 +109,11 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             # Load our saved model!
                             model = joblib.load('dumb_model.pkl')
                             
-                            # Ask it to predict!
-                            prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Hist_Pos']])
-
+                            # Predict!
+                            prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition']])
                             
-                            # Convert the raw scores into an exact 1-N ranking
+                            # Convert raw scores into an exact 1-N ranking
                             prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank()
-
                             
                             # Sort by the predicted finish
                             prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
