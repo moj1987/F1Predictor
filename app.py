@@ -102,8 +102,22 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             # Sort by the predicted finish
                             prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
                             
-                            # Display the final prediction
-                            st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']])
+                            # Check for actual race results
+                            actual_results = get_race_results(year, event)
+                            
+                            if actual_results is not None and not actual_results.empty:
+                                # Merge the actual results into our prediction_df
+                                prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position']], on='Driver', how='left')
+                                
+                                # Rename 'Race_Position' to 'Actual_Finish' for clarity
+                                prediction_df.rename(columns={'Race_Position': 'Actual_Finish'}, inplace=True)
+                                
+                                # Display prediction along with actual finish
+                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish']])
+                            else:
+                                # Display just the final prediction
+                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']])
+
                     else:
                         st.warning("Historical data for this event from last year is unavailable (e.g., this is a new track). The Dumb Model cannot make a prediction.")
 
