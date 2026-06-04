@@ -79,7 +79,7 @@ def test_ml_pipeline():
     
     print("\nBuilding training dataset...")
     # Pass quali
-    training_df = build_training_dataset(pace_2025, actual_results_2025, historical_results_2024, qualy_2025)
+    training_df = build_training_dataset(pace_2025, actual_results_2025, historical_results_2024, qualy_2025, 'Spanish Grand Prix')
 
     print("\nTraining Data Preview:")
     print(training_df.head())

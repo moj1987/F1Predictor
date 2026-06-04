@@ -6,6 +6,26 @@ CACHE_DIR = 'f1_cache'
 os.makedirs(CACHE_DIR, exist_ok=True)
 fastf1.Cache.enable_cache(CACHE_DIR)
 
+TRACK_DOWNFORCE_LEVELS = {
+    'Bahrain Grand Prix': 2, 'Saudi Arabian Grand Prix': 1, 'Australian Grand Prix': 2,
+    'Japanese Grand Prix': 2, 'Chinese Grand Prix': 2, 'Miami Grand Prix': 2,
+    'Emilia Romagna Grand Prix': 2, 'Monaco Grand Prix': 3, 'Canadian Grand Prix': 1,
+    'Spanish Grand Prix': 2, 'Austrian Grand Prix': 2, 'British Grand Prix': 2,
+    'Hungarian Grand Prix': 3, 'Belgian Grand Prix': 1, 'Dutch Grand Prix': 3,
+    'Italian Grand Prix': 1, 'Azerbaijan Grand Prix': 1, 'Singapore Grand Prix': 3,
+    'United States Grand Prix': 2, 'Mexico City Grand Prix': 3, 'São Paulo Grand Prix': 2,
+    'Las Vegas Grand Prix': 1, 'Qatar Grand Prix': 3, 'Abu Dhabi Grand Prix': 2
+}
+
+def get_track_downforce(event_name):
+    # Returns 1 (Low), 2 (Medium), or 3 (High). Defaults to 2 if unknown.
+    return TRACK_DOWNFORCE_LEVELS.get(event_name, 2)
+
+def get_downforce_label(level):
+    if level == 1: return "Low Downforce (Speed)"
+    if level == 3: return "High Downforce (Corners)"
+    return "Medium Downforce (Balanced)"
+
 def get_session_laps(year, event, session_type):
     print(f"Loading data for {year} {event} - {session_type}...")
     try:

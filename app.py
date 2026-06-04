@@ -27,6 +27,15 @@ try:
 
     # Create a beautiful dropdown menu!
     event = st.sidebar.selectbox("Select Grand Prix", event_names)
+    # Fetch and display Track Characteristics
+    from data_pipeline import get_track_downforce, get_downforce_label
+    downforce_lvl = get_track_downforce(event)
+    df_label = get_downforce_label(downforce_lvl)
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown(f"**Track Characteristic:**")
+    st.sidebar.info(f"🏎️ {df_label}")
+
 except Exception as e: 
     st.sidebar.error(f"Failed to fetch F1 schedule. Check your internet connection. ({e})")
     st.stop() # Stop execution here so the app doesn't crash further down
@@ -102,6 +111,9 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             prediction_df['GridPosition'] = 20.0
                         prediction_df['GridPosition'] = prediction_df['GridPosition'].fillna(20.0)
                         
+                        # 4. Track Characteristic!
+                        prediction_df['Track_Type'] = downforce_lvl
+
                         # Check if the model file actually exists before loading!
                         if not os.path.exists('dumb_model.pkl'):
                             st.warning("⚠️ Model file 'dumb_model.pkl' not found! You need to train the model first before getting predictions.")
@@ -110,7 +122,7 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             model = joblib.load('dumb_model.pkl')
                             
                             # Predict!
-                            prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition']])
+                            prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition', 'Track_Type']])
                             
                             # Convert raw scores into an exact 1-N ranking
                             prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank()

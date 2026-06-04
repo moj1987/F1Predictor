@@ -3,7 +3,7 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
 
-def build_training_dataset(fp2_pace_df, actual_race_results_df, historical_team_results_df, qualy_results_df):
+def build_training_dataset(fp2_pace_df, actual_race_results_df, historical_team_results_df, qualy_results_df, event_name):
     # Calculate historical finish position per DRIVER
     driver_history = historical_team_results_df.groupby('Driver')['Race_Position'].mean().reset_index()
     driver_history.rename(columns={'Race_Position': 'Driver_Hist_Pos'}, inplace=True)
@@ -27,11 +27,14 @@ def build_training_dataset(fp2_pace_df, actual_race_results_df, historical_team_
     # Create the track-agnostic Pace Rank!
     df['Pace_Rank'] = df['FP2_Avg_Pace_s'].rank()
     
+    # Track type 
+    from data_pipeline import get_track_downforce
+    df['Track_Type'] = get_track_downforce(event_name)
+
     return df
 
 def train_rf_model(training_df):
-    # Use Pace_Rank instead of raw seconds!
-    features = ['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition']
+    features = ['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition', 'Track_Type']
     target = 'Race_Position'
     
     X = training_df[features]
