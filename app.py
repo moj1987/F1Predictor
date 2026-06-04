@@ -115,24 +115,28 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             # Convert raw scores into an exact 1-N ranking
                             prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank()
                             
-                            # Sort by the predicted finish
+                            # Sort by the predicted finish initially
                             prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
                             
                             # Check for actual race results
                             actual_results = get_race_results(year, event)
                             
                             if actual_results is not None and not actual_results.empty:
-                                # Merge the actual results into our prediction_df
-                                prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position']], on='Driver', how='left')
+                                # 1 & 2: Use how='outer' to include everyone, even DNFs who missed FP2
+                                prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status']], on='Driver', how='outer')
                                 
-                                # Rename 'Race_Position' to 'Actual_Finish' for clarity
-                                prediction_df.rename(columns={'Race_Position': 'Actual_Finish'}, inplace=True)
+                                # Rename for clarity
+                                prediction_df.rename(columns={'Race_Position': 'Actual_Finish', 'Status': 'Race_Status'}, inplace=True)
                                 
-                                # Display prediction along with actual finish
-                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish']])
+                                # 4: Sort the final table based on the actual race results!
+                                prediction_df = prediction_df.sort_values('Actual_Finish').reset_index(drop=True)
+                                
+                                # 3: Display prediction (hide_index=True removes the weird numbers on the left)
+                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
                             else:
                                 # Display just the final prediction
-                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']])
+                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']], hide_index=True)
+
 
                     else:
                         st.warning("Historical data for this event from last year is unavailable (e.g., this is a new track). The Dumb Model cannot make a prediction.")
