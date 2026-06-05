@@ -74,37 +74,39 @@ if st.sidebar.button("Analyze FP2 Pace"):
                     
                     # Add Degradation_Formatted so we can see it in Streamlit!
                     display_df = compound_df[['Driver', 'Team', 'Laps_Count', 'FP2_Avg_Pace_Formatted', 'Degradation_Formatted']]
-                    st.dataframe(display_df, use_container_width=True)
+                    st.dataframe(display_df, use_container_width=True, hide_index=True)
 
-                    
-                # --- THE DUMB MODEL PREDICTION ---
+                # --- THE DYNAMIC ML PREDICTION ---
                 st.markdown("---")
-                st.subheader("🔮 Predicted Race Order (The Dumb Model)")
+                st.subheader("🤖 The Dynamic Random Forest Model")
                 
-                with st.spinner("Fetching historical team data to make prediction..."):
-                    from data_pipeline import get_race_results
-                    # Fetch last year's results to know how good the car is
-                    historical_data = get_race_results(year - 1, event)
+                with st.spinner("🧠 Booting up Dynamic Training (fetching past 3 races)..."):
+                    from model import build_dynamic_model
+                    model, driver_form, team_form = build_dynamic_model(year, event)
+                
+                if model is not None:
+                    st.success("✅ Dynamic Model Trained on the latest momentum!")
                     
-                    if historical_data is not None and not historical_data.empty:
-                        # Filter pace_df to only use the fastest tire compound they ran
-                        # (To simplify, we take their fastest overall average pace)
-                        fastest_pace = pace_df.groupby('Driver').first().reset_index()
-                        fastest_pace['Pace_Rank'] = fastest_pace['FP2_Avg_Pace_s'].rank()
+                    with st.spinner("Running Predictions..."):
+                        # Get the fastest pace per driver for the CURRENT race
+                        prediction_df = pace_df.groupby('Driver').first().reset_index()
                         
-                        # 1. Driver History (You already have this!)
-                        driver_history = historical_data.groupby('Driver')['Race_Position'].mean().reset_index()
-                        driver_history.rename(columns={'Race_Position': 'Driver_Hist_Pos'}, inplace=True)
-                        prediction_df = pd.merge(fastest_pace, driver_history, on='Driver', how='left')
-                        prediction_df['Driver_Hist_Pos'] = prediction_df['Driver_Hist_Pos'].fillna(15.0)
+                        # Add Pace Rank
+                        prediction_df['Pace_Rank'] = prediction_df['FP2_Avg_Pace_s'].rank()
+                        
+                        # Add Track Type
+                        prediction_df['Track_Type'] = downforce_lvl
+                        
+                        # Map Recent Form
+                        prediction_df = pd.merge(prediction_df, driver_form, on='Driver', how='left')
+                        # If a driver is a rookie, give them the car's average form!
+                        prediction_df['Driver_Recent_Form'] = prediction_df['Driver_Recent_Form'].fillna(prediction_df['Team_Recent_Form']).fillna(15.0)
 
-                        # 2. Team History
-                        team_history = historical_data.groupby('TeamName')['Race_Position'].mean().reset_index()
-                        team_history.rename(columns={'Race_Position': 'Team_Hist_Pos', 'TeamName': 'Team'}, inplace=True)
-                        prediction_df = pd.merge(prediction_df, team_history, on='Team', how='left')
-                        prediction_df['Team_Hist_Pos'] = prediction_df['Team_Hist_Pos'].fillna(15.0)
-
-                        # 3. Grid Position
+                        
+                        prediction_df = pd.merge(prediction_df, team_form, on='Team', how='left')
+                        prediction_df['Team_Recent_Form'] = prediction_df['Team_Recent_Form'].fillna(15.0)
+                        
+                        # Fetch Qualifying
                         from data_pipeline import get_qualifying_results
                         qualy_results = get_qualifying_results(year, event)
                         if qualy_results is not None and not qualy_results.empty:
@@ -112,49 +114,36 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         else:
                             prediction_df['GridPosition'] = 20.0
                         prediction_df['GridPosition'] = prediction_df['GridPosition'].fillna(20.0)
+
+
+                        # Predict using the LIVE dynamic model!
+                        prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
                         
-                        # 4. Track Characteristic!
-                        prediction_df['Track_Type'] = downforce_lvl
-
-                        # Check if the model file actually exists before loading!
-                        if not os.path.exists('dumb_model.pkl'):
-                            st.warning("⚠️ Model file 'dumb_model.pkl' not found! You need to train the model first before getting predictions.")
+                        # Convert raw scores into an exact 1-N ranking
+                        prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank(method='first')
+                        
+                        # Sort by the predicted finish initially
+                        prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
+                            
+                        # Check for actual race results
+                        from data_pipeline import get_race_results
+                        actual_results = get_race_results(year, event)
+                        
+                        if actual_results is not None and not actual_results.empty:
+                            # 1 & 2: Use how='outer' to include everyone, even DNFs who missed FP2
+                            prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status']], on='Driver', how='outer')
+                            
+                            # Rename for clarity
+                            prediction_df.rename(columns={'Race_Position': 'Actual_Finish', 'Status': 'Race_Status'}, inplace=True)
+                            
+                            # 4: Sort the final table based on the actual race results!
+                            prediction_df = prediction_df.sort_values('Actual_Finish').reset_index(drop=True)
+                            
+                            # 3: Display prediction (hide_index=True removes the weird numbers on the left)
+                            st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
                         else:
-                            # Load our saved model!
-                            model = joblib.load('dumb_model.pkl')
-                            
-                            # Ask it to predict using our new 6th super-feature!
-                            prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
-
-                            
-                            # Convert raw scores into an exact 1-N ranking
-                            prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank()
-                            
-                            # Sort by the predicted finish initially
-                            prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
-                            
-                            # Check for actual race results
-                            actual_results = get_race_results(year, event)
-                            
-                            if actual_results is not None and not actual_results.empty:
-                                # 1 & 2: Use how='outer' to include everyone, even DNFs who missed FP2
-                                prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status']], on='Driver', how='outer')
-                                
-                                # Rename for clarity
-                                prediction_df.rename(columns={'Race_Position': 'Actual_Finish', 'Status': 'Race_Status'}, inplace=True)
-                                
-                                # 4: Sort the final table based on the actual race results!
-                                prediction_df = prediction_df.sort_values('Actual_Finish').reset_index(drop=True)
-                                
-                                # 3: Display prediction (hide_index=True removes the weird numbers on the left)
-                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
-                            else:
-                                # Display just the final prediction
-                                st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']], hide_index=True)
-
-
-                    else:
-                        st.warning("Historical data for this event from last year is unavailable (e.g., this is a new track). The Dumb Model cannot make a prediction.")
+                            # Display just the final prediction
+                            st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']], hide_index=True)
 
         else:
             st.error("Failed to load FP2 data. The session might have been rained out, cancelled, or it was a Sprint weekend!")
