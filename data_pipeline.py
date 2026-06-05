@@ -82,13 +82,25 @@ def format_time(seconds):
 
 def calculate_avg_pace(long_runs_df):
     """
-    Calculates the average FP2 long-run pace AND lap count for each driver.
+    Calculates the average FP2 long-run pace, lap count, and Tire Degradation for each driver.
     """
-    # Use .agg() to calculate both the mean (average time) AND the count (number of laps)
-    avg_pace = long_runs_df.groupby(['Driver', 'Team', 'Compound'])['LapTime_s'].agg(['mean', 'count']).reset_index()
+    import numpy as np
     
-    # Rename the new columns so they are easy to read
+    # 1. Calculate Average Pace and Lap Count
+    avg_pace = long_runs_df.groupby(['Driver', 'Team', 'Compound'])['LapTime_s'].agg(['mean', 'count']).reset_index()
     avg_pace.rename(columns={'mean': 'FP2_Avg_Pace_s', 'count': 'Laps_Count'}, inplace=True)
+    
+    # 2. NEW: Calculate Tire Degradation (Pace Slope)
+    def calc_slope(group):
+        if len(group) > 1:
+            # np.polyfit calculates the linear regression slope
+            return np.polyfit(np.arange(len(group)), group['LapTime_s'].values, 1)[0]
+        return 0.0
+        
+    deg_df = long_runs_df.groupby(['Driver', 'Team', 'Compound']).apply(calc_slope).reset_index(name='Tire_Deg_Rate')
+    
+    # Merge them together!
+    avg_pace = pd.merge(avg_pace, deg_df, on=['Driver', 'Team', 'Compound'])
     
     # Sort from fastest (lowest time) to slowest
     avg_pace = avg_pace.sort_values(by='FP2_Avg_Pace_s').reset_index(drop=True)
@@ -96,7 +108,11 @@ def calculate_avg_pace(long_runs_df):
     # Format the time for display
     avg_pace['FP2_Avg_Pace_Formatted'] = avg_pace['FP2_Avg_Pace_s'].apply(format_time)
     
+    # Format Tire Deg for display (e.g. "+0.150s/lap")
+    avg_pace['Degradation_Formatted'] = avg_pace['Tire_Deg_Rate'].apply(lambda x: f"{x:+.3f}s/lap")
+    
     return avg_pace
+
 
 def get_race_results(year, event):
     """

@@ -34,7 +34,7 @@ def build_training_dataset(fp2_pace_df, actual_race_results_df, historical_team_
     return df
 
 def train_rf_model(training_df):
-    features = ['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition', 'Track_Type']
+    features = ['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']
     target = 'Race_Position'
     
     X = training_df[features]

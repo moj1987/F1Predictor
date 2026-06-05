@@ -72,8 +72,10 @@ if st.sidebar.button("Analyze FP2 Pace"):
                     # Filter the dataframe to only show this specific compound
                     compound_df = pace_df[pace_df['Compound'] == compound]
                     
-                    display_df = compound_df[['Driver', 'Team', 'Laps_Count', 'FP2_Avg_Pace_Formatted']]
+                    # Add Degradation_Formatted so we can see it in Streamlit!
+                    display_df = compound_df[['Driver', 'Team', 'Laps_Count', 'FP2_Avg_Pace_Formatted', 'Degradation_Formatted']]
                     st.dataframe(display_df, use_container_width=True)
+
                     
                 # --- THE DUMB MODEL PREDICTION ---
                 st.markdown("---")
@@ -121,8 +123,9 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             # Load our saved model!
                             model = joblib.load('dumb_model.pkl')
                             
-                            # Predict!
-                            prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition', 'Track_Type']])
+                            # Ask it to predict using our new 6th super-feature!
+                            prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Hist_Pos', 'Team_Hist_Pos', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
+
                             
                             # Convert raw scores into an exact 1-N ranking
                             prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank()
