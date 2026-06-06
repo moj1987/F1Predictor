@@ -90,6 +90,37 @@ def get_recent_events(target_year, target_event_name, num_races=15):
         
     return past_events
 
+def get_track_history(target_year, target_event_name, num_years=3):
+    """Calculates a driver's average finish at this exact track over the last N years."""
+    import fastf1
+    from data_pipeline import get_race_results
+    import pandas as pd
+    
+    historical_results = []
+    
+    for y in range(target_year - 1, target_year - 1 - num_years, -1):
+        try:
+            # Check if this event existed in year 'y'
+            schedule = fastf1.get_event_schedule(y)
+            event = schedule[schedule['EventName'] == target_event_name]
+            if not event.empty:
+                actual = get_race_results(y, target_event_name)
+                if actual is not None and not actual.empty:
+                    # Treat DNFs as 20th place
+                    actual['Race_Position'] = pd.to_numeric(actual['Race_Position'], errors='coerce').fillna(20.0)
+                    historical_results.append(actual[['Driver', 'Race_Position']])
+        except Exception:
+            pass # Ignore if the race was cancelled that year
+            
+    if historical_results:
+        all_hist = pd.concat(historical_results, ignore_index=True)
+        track_affinity = all_hist.groupby('Driver')['Race_Position'].mean().reset_index()
+        track_affinity.rename(columns={'Race_Position': 'Driver_Track_History'}, inplace=True)
+        return track_affinity
+    else:
+        # Return an empty dataframe if the track is completely new
+        return pd.DataFrame(columns=['Driver', 'Driver_Track_History'])
+
 def build_dynamic_model(target_year, target_event_name):
     from data_pipeline import get_session_laps, clean_laps, extract_long_runs, calculate_avg_pace, get_race_results, get_qualifying_results, get_track_downforce
     import pandas as pd
@@ -176,9 +207,12 @@ def build_dynamic_model(target_year, target_event_name):
         all_training_data.append(df)
         
     if not all_training_data:
-        return None, None, None
+        return None, None, None, None
         
     training_df = pd.concat(all_training_data, ignore_index=True)
+    
+    # Calculate Track Affinity (3-year history at this exact track)
+    track_affinity = get_track_history(target_year, target_event_name)
     
     # Map Recent Form to Training Data
     training_df = pd.merge(training_df, driver_form, on='Driver', how='left')
@@ -188,8 +222,13 @@ def build_dynamic_model(target_year, target_event_name):
     training_df['Driver_Recent_Form'] = training_df['Driver_Recent_Form'].fillna(training_df['Team_Recent_Form']).fillna(15.0)
     training_df['Team_Recent_Form'] = training_df['Team_Recent_Form'].fillna(15.0)
     
+    # Map Track Affinity to Training Data
+    training_df = pd.merge(training_df, track_affinity, on='Driver', how='left')
+    # If no track history, fallback to their overall recent form!
+    training_df['Driver_Track_History'] = training_df['Driver_Track_History'].fillna(training_df['Driver_Recent_Form'])
+    
     # --- 4. Train the model live with strict rules to prevent overfitting! ---
-    features = ['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']
+    features = ['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'Driver_Track_History', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']
     X = training_df[features]
     y = training_df['Race_Position']
     
@@ -198,4 +237,6 @@ def build_dynamic_model(target_year, target_event_name):
     model = RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_leaf=5, random_state=42)
     model.fit(X, y)
     
-    return model, driver_form, team_form
+    # Return track_affinity so the Streamlit App can display it!
+    return model, driver_form, team_form, track_affinity
+

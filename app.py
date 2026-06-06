@@ -82,7 +82,8 @@ if st.sidebar.button("Analyze FP2 Pace"):
                 
                 with st.spinner("🧠 Booting up Dynamic Training (fetching past 3 races)..."):
                     from model import build_dynamic_model
-                    model, driver_form, team_form = build_dynamic_model(year, event)
+                    model, driver_form, team_form, track_affinity = build_dynamic_model(year, event)
+
                 
                 if model is not None:
                     st.success("✅ Dynamic Model Trained on the latest momentum!")
@@ -101,7 +102,10 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         prediction_df = pd.merge(prediction_df, driver_form, on='Driver', how='left')
                         prediction_df = pd.merge(prediction_df, team_form, on='Team', how='left')
                         prediction_df['Team_Recent_Form'] = prediction_df['Team_Recent_Form'].fillna(15.0)
-                        
+                        prediction_df = pd.merge(prediction_df, track_affinity, on='Driver', how='left')
+                        # Fallback to Driver_Recent_Form if they have zero history at this track!
+                        prediction_df['Driver_Track_History'] = prediction_df['Driver_Track_History'].fillna(prediction_df['Driver_Recent_Form'])
+
                         # If a driver is a rookie, give them the car's average form!
                         prediction_df['Driver_Recent_Form'] = prediction_df['Driver_Recent_Form'].fillna(prediction_df['Team_Recent_Form']).fillna(15.0)
 
@@ -116,7 +120,8 @@ if st.sidebar.button("Analyze FP2 Pace"):
 
 
                         # Predict using the LIVE dynamic model!
-                        prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
+                        prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'Driver_Track_History', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
+
                         
                         # Convert raw scores into an exact 1-N ranking
                         prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank(method='first')
@@ -144,10 +149,10 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             prediction_df = prediction_df.sort_values('Actual_Finish').reset_index(drop=True)
                             
                             # 3: Display prediction (hide_index=True removes the weird numbers on the left)
-                            st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
+                            st.dataframe(prediction_df[['Driver', 'Team', 'Driver_Track_History', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
                         else:
-                            # Display just the final prediction
-                            st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']], hide_index=True)
+                            st.dataframe(prediction_df[['Driver', 'Team', 'Driver_Track_History', 'Predicted_Finish']], hide_index=True)
+
                 else:
                     st.warning("⚠️ Welcome to a New Era! Because this is the first race of the new regulations, there is NO historical data to train the ML model.")
                     st.info("🔮 Falling back to predicting based purely on Free Practice 2 Pace!")
