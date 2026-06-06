@@ -97,7 +97,17 @@ def calculate_avg_pace(long_runs_df):
             return np.polyfit(np.arange(len(group)), group['LapTime_s'].values, 1)[0]
         return 0.0
         
-    deg_df = long_runs_df.groupby(['Driver', 'Team', 'Compound']).apply(calc_slope).reset_index(name='Tire_Deg_Rate')
+    slopes = []
+    for keys, group in long_runs_df.groupby(['Driver', 'Team', 'Compound']):
+        slopes.append({
+            'Driver': keys[0], 
+            'Team': keys[1], 
+            'Compound': keys[2], 
+            'Tire_Deg_Rate': calc_slope(group)
+        })
+    deg_df = pd.DataFrame(slopes, columns=['Driver', 'Team', 'Compound', 'Tire_Deg_Rate'])
+
+
     
     # Merge them together!
     avg_pace = pd.merge(avg_pace, deg_df, on=['Driver', 'Team', 'Compound'])
@@ -138,7 +148,7 @@ def get_qualifying_results(year, event):
     try:
         session = fastf1.get_session(year, event, 'Q')
         session.load(telemetry=False, weather=False)
-        results = session.results[['Abbreviation', 'Position']]
+        results = session.results[['Abbreviation', 'Position', 'TeamName']]
         return results.rename(columns={'Abbreviation': 'Driver', 'Position': 'GridPosition'})
     except Exception as e:
         print(f"Failed to load qualifying results: {e}")

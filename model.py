@@ -130,6 +130,23 @@ def build_dynamic_model(target_year, target_event_name):
     past_events = get_recent_events(target_year, target_event_name, num_races=15)
     target_track_type = get_track_downforce(target_event_name)
     
+    # Inject historical data for THIS EXACT TRACK!
+    import fastf1
+    for y in range(target_year - 1, target_year - 4, -1):
+        try:
+            schedule = fastf1.get_event_schedule(y)
+            event_row = schedule[schedule['EventName'] == target_event_name]
+            if not event_row.empty:
+                # Only add it if it's not already in past_events!
+                if not any(pe['year'] == y and pe['event'] == target_event_name for pe in past_events):
+                    past_events.append({
+                        'year': y,
+                        'event': target_event_name,
+                        'track_type': target_track_type
+                    })
+        except Exception:
+            pass
+
     if not past_events:
         return None, None, None
 
@@ -234,7 +251,7 @@ def build_dynamic_model(target_year, target_event_name):
     
     # max_depth=4 stops the trees from overthinking. 
     # min_samples_leaf=5 forces it to base predictions on a consensus of at least 5 similar drivers!
-    model = RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_leaf=5, random_state=42)
+    model = RandomForestRegressor(n_estimators=100, max_depth=7, min_samples_leaf=2, random_state=42)
     model.fit(X, y)
     
     # Return track_affinity so the Streamlit App can display it!

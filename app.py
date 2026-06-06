@@ -92,36 +92,41 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         # Get the fastest pace per driver for the CURRENT race
                         prediction_df = pace_df.groupby('Driver').first().reset_index()
                         
-                        # Add Pace Rank
+                        # Add Pace Rank & Track Type
                         prediction_df['Pace_Rank'] = prediction_df['FP2_Avg_Pace_s'].rank()
-                        
-                        # Add Track Type
                         prediction_df['Track_Type'] = downforce_lvl
                         
-                        # Map Recent Form
+                        # --- 1. BRING EVERYONE INTO THE TABLE EARLY ---
+                        from data_pipeline import get_qualifying_results
+                        qualy_results = get_qualifying_results(year, event)
+                        if qualy_results is not None and not qualy_results.empty:
+                            prediction_df = pd.merge(prediction_df, qualy_results, on='Driver', how='outer')
+                            # Fill the missing Team Name using the Qualy data!
+                            prediction_df['Team'] = prediction_df['Team'].fillna(prediction_df['TeamName'])
+                            prediction_df.drop(columns=['TeamName'], inplace=True)
+
+                            
+                            # Fill missing FP2 stats with worst-case defaults so the ML model doesn't crash!
+                            prediction_df['Pace_Rank'] = prediction_df['Pace_Rank'].fillna(20.0)
+                            prediction_df['Tire_Deg_Rate'] = prediction_df['Tire_Deg_Rate'].fillna(0.0)
+                            prediction_df['Track_Type'] = prediction_df['Track_Type'].fillna(downforce_lvl)
+                        else:
+                            prediction_df['GridPosition'] = 20.0
+                        prediction_df['GridPosition'] = prediction_df['GridPosition'].fillna(20.0)
+                        
+                        # --- 2. MAP HISTORICAL FORMS ---
                         prediction_df = pd.merge(prediction_df, driver_form, on='Driver', how='left')
                         prediction_df = pd.merge(prediction_df, team_form, on='Team', how='left')
                         prediction_df['Team_Recent_Form'] = prediction_df['Team_Recent_Form'].fillna(15.0)
+                        
                         prediction_df = pd.merge(prediction_df, track_affinity, on='Driver', how='left')
-                        # Fallback to Driver_Recent_Form if they have zero history at this track!
                         prediction_df['Driver_Track_History'] = prediction_df['Driver_Track_History'].fillna(prediction_df['Driver_Recent_Form']).round(1)
 
                         # If a driver is a rookie, give them the car's average form!
                         prediction_df['Driver_Recent_Form'] = prediction_df['Driver_Recent_Form'].fillna(prediction_df['Team_Recent_Form']).fillna(15.0)
 
-                        # Fetch Qualifying
-                        from data_pipeline import get_qualifying_results
-                        qualy_results = get_qualifying_results(year, event)
-                        if qualy_results is not None and not qualy_results.empty:
-                            prediction_df = pd.merge(prediction_df, qualy_results, on='Driver', how='left')
-                        else:
-                            prediction_df['GridPosition'] = 20.0
-                        prediction_df['GridPosition'] = prediction_df['GridPosition'].fillna(20.0)
-
-
-                        # Predict using the LIVE dynamic model!
+                        # --- 3. PREDICT LIVE ---
                         prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'Driver_Track_History', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
-
                         
                         # Convert raw scores into an exact 1-N ranking
                         prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank(method='first')
