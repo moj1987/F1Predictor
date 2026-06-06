@@ -130,7 +130,12 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         
                         if actual_results is not None and not actual_results.empty:
                             # 1 & 2: Use how='outer' to include everyone, even DNFs who missed FP2
-                            prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status']], on='Driver', how='outer')
+                            # Bring TeamName over from Sunday's results!
+                            prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status', 'TeamName']], on='Driver', how='outer')
+
+                            # Fill any blank Teams with the TeamName from Sunday
+                            prediction_df['Team'] = prediction_df['Team'].fillna(prediction_df['TeamName'])
+
                             
                             # Rename for clarity
                             prediction_df.rename(columns={'Race_Position': 'Actual_Finish', 'Status': 'Race_Status'}, inplace=True)
@@ -157,7 +162,12 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         actual_results = get_race_results(year, event)
                         
                         if actual_results is not None and not actual_results.empty:
-                            prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status']], on='Driver', how='outer')
+                            # Bring TeamName over from Sunday's results!
+                            prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status', 'TeamName']], on='Driver', how='outer')
+
+                            # Fill any blank Teams with the TeamName from Sunday
+                            prediction_df['Team'] = prediction_df['Team'].fillna(prediction_df['TeamName'])
+
                             prediction_df.rename(columns={'Race_Position': 'Actual_Finish', 'Status': 'Race_Status'}, inplace=True)
                             prediction_df = prediction_df.sort_values('Actual_Finish').reset_index(drop=True)
                             st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
