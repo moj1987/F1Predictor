@@ -104,7 +104,7 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         prediction_df['Team_Recent_Form'] = prediction_df['Team_Recent_Form'].fillna(15.0)
                         prediction_df = pd.merge(prediction_df, track_affinity, on='Driver', how='left')
                         # Fallback to Driver_Recent_Form if they have zero history at this track!
-                        prediction_df['Driver_Track_History'] = prediction_df['Driver_Track_History'].fillna(prediction_df['Driver_Recent_Form'])
+                        prediction_df['Driver_Track_History'] = prediction_df['Driver_Track_History'].fillna(prediction_df['Driver_Recent_Form']).round(1)
 
                         # If a driver is a rookie, give them the car's average form!
                         prediction_df['Driver_Recent_Form'] = prediction_df['Driver_Recent_Form'].fillna(prediction_df['Team_Recent_Form']).fillna(15.0)
@@ -140,7 +140,6 @@ if st.sidebar.button("Analyze FP2 Pace"):
 
                             # Fill any blank Teams with the TeamName from Sunday
                             prediction_df['Team'] = prediction_df['Team'].fillna(prediction_df['TeamName'])
-
                             
                             # Rename for clarity
                             prediction_df.rename(columns={'Race_Position': 'Actual_Finish', 'Status': 'Race_Status'}, inplace=True)
@@ -149,9 +148,9 @@ if st.sidebar.button("Analyze FP2 Pace"):
                             prediction_df = prediction_df.sort_values('Actual_Finish').reset_index(drop=True)
                             
                             # 3: Display prediction (hide_index=True removes the weird numbers on the left)
-                            st.dataframe(prediction_df[['Driver', 'Team', 'Driver_Track_History', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
+                            st.dataframe(prediction_df[['Driver_Track_History', 'Driver', 'Team', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
                         else:
-                            st.dataframe(prediction_df[['Driver', 'Team', 'Driver_Track_History', 'Predicted_Finish']], hide_index=True)
+                            st.dataframe(prediction_df[['Driver_Track_History', 'Driver', 'Team', 'Predicted_Finish']], hide_index=True)
 
                 else:
                     st.warning("⚠️ Welcome to a New Era! Because this is the first race of the new regulations, there is NO historical data to train the ML model.")
