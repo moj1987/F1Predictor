@@ -53,9 +53,11 @@ def train_rf_model(training_df):
     
     return model
 
-def get_recent_events(target_year, target_event_name, num_races=3):
-    """Finds the N races immediately preceding the target race."""
+def get_recent_events(target_year, target_event_name, num_races=15):
+    """Finds the N races immediately preceding the target race with an Era Boundary."""
     import fastf1
+    from data_pipeline import get_track_downforce
+    
     schedule = fastf1.get_event_schedule(target_year)
     target_event = schedule[schedule['EventName'] == target_event_name]
     if target_event.empty: return []
@@ -69,12 +71,21 @@ def get_recent_events(target_year, target_event_name, num_races=3):
     while len(past_events) < num_races:
         if curr_round < 1:
             curr_year -= 1
+            # ERA BOUNDARY: Don't pull 2025 (or older) data for a 2026 race!
+            if target_year >= 2026 and curr_year < 2026:
+                break
+                
             curr_schedule = fastf1.get_event_schedule(curr_year)
             curr_round = curr_schedule[curr_schedule['RoundNumber'] > 0]['RoundNumber'].max()
             
         event_row = curr_schedule[curr_schedule['RoundNumber'] == curr_round].iloc[0]
         if event_row['EventFormat'] != 'testing':
-            past_events.append({'year': curr_year, 'event': event_row['EventName']})
+            event_name = event_row['EventName']
+            past_events.append({
+                'year': curr_year, 
+                'event': event_name,
+                'track_type': get_track_downforce(event_name)
+            })
         curr_round -= 1
         
     return past_events
@@ -84,27 +95,63 @@ def build_dynamic_model(target_year, target_event_name):
     import pandas as pd
     from sklearn.ensemble import RandomForestRegressor
     
-    past_events = get_recent_events(target_year, target_event_name, num_races=3)
+    # 1. Fetch up to 15 races for the Brain
+    past_events = get_recent_events(target_year, target_event_name, num_races=15)
+    target_track_type = get_track_downforce(target_event_name)
     
-    all_training_data = []
+    if not past_events:
+        return None, None, None
+
+    # --- 2. Track-Matched Momentum (The 7-Race Decay Window) ---
+    recent_7_events = past_events[:7]
+    matched_events = [pe for pe in recent_7_events if pe['track_type'] == target_track_type]
+    
+    # Take up to 3 exact Track Type matches
+    momentum_events = matched_events[:3]
+    
+    # If we found fewer than 3, pad with the most chronologically recent races from the 7-race window
+    if len(momentum_events) < 3:
+        for pe in recent_7_events:
+            if pe not in momentum_events:
+                momentum_events.append(pe)
+            if len(momentum_events) == 3:
+                break
+
+    # Calculate Recent Form from our perfectly curated Momentum Events!
     recent_driver_results = []
     recent_team_results = []
+    
+    for pe in momentum_events:
+        actual = get_race_results(pe['year'], pe['event'])
+        if actual is None or actual.empty: continue
+        
+        # Treat DNFs as 20th place!
+        actual['Race_Position'] = pd.to_numeric(actual['Race_Position'], errors='coerce').fillna(20.0)
+        recent_driver_results.append(actual[['Driver', 'Race_Position']])
+        recent_team_results.append(actual[['TeamName', 'Race_Position']])
+        
+    if recent_driver_results:
+        all_driver_res = pd.concat(recent_driver_results, ignore_index=True)
+        driver_form = all_driver_res.groupby('Driver')['Race_Position'].mean().reset_index()
+        driver_form.rename(columns={'Race_Position': 'Driver_Recent_Form'}, inplace=True)
+        
+        all_team_res = pd.concat(recent_team_results, ignore_index=True)
+        team_form = all_team_res.groupby('TeamName')['Race_Position'].mean().reset_index()
+        team_form.rename(columns={'Race_Position': 'Team_Recent_Form', 'TeamName': 'Team'}, inplace=True)
+    else:
+        # Extreme edge case (race 1 of a new era)
+        driver_form = pd.DataFrame(columns=['Driver', 'Driver_Recent_Form'])
+        team_form = pd.DataFrame(columns=['Team', 'Team_Recent_Form'])
+
+    # --- 3. Build Training Dataset (The 15-Race Brain) ---
+    all_training_data = []
     
     for pe in past_events:
         year, event = pe['year'], pe['event']
         
-        # 1. Get Race Results
         actual = get_race_results(year, event)
         if actual is None or actual.empty: continue
             
-        # NEW FIX: Treat DNFs as 20th place so they don't get an artificially good average!
-        actual['Race_Position'] = pd.to_numeric(actual['Race_Position'], errors='coerce').fillna(20.0)
-            
-        # Store for Step 4 (Recent Form)
-        recent_driver_results.append(actual[['Driver', 'Race_Position']])
-        recent_team_results.append(actual[['TeamName', 'Race_Position']])
-
-        # 2. Get Pace
         laps = get_session_laps(year, event, 'FP2')
         if laps is None or laps.empty: continue
         clean = clean_laps(laps)
@@ -113,10 +160,8 @@ def build_dynamic_model(target_year, target_event_name):
         if pace_df.empty: continue
         pace_df = pace_df.groupby('Driver').first().reset_index()
         
-        # 3. Get Qualy
         qualy = get_qualifying_results(year, event)
         
-        # Merge it all for this single past race!
         df = pace_df.copy()
         if qualy is not None and not qualy.empty:
             df = pd.merge(df, qualy, on='Driver', how='left')
@@ -133,30 +178,23 @@ def build_dynamic_model(target_year, target_event_name):
     if not all_training_data:
         return None, None, None
         
-    # Combine all training data
     training_df = pd.concat(all_training_data, ignore_index=True)
-    
-    # Calculate Recent Form! (Step 4)
-    all_driver_res = pd.concat(recent_driver_results, ignore_index=True)
-    driver_form = all_driver_res.groupby('Driver')['Race_Position'].mean().reset_index()
-    driver_form.rename(columns={'Race_Position': 'Driver_Recent_Form'}, inplace=True)
-    
-    all_team_res = pd.concat(recent_team_results, ignore_index=True)
-    team_form = all_team_res.groupby('TeamName')['Race_Position'].mean().reset_index()
-    team_form.rename(columns={'Race_Position': 'Team_Recent_Form', 'TeamName': 'Team'}, inplace=True)
     
     # Map Recent Form to Training Data
     training_df = pd.merge(training_df, driver_form, on='Driver', how='left')
-    training_df['Driver_Recent_Form'] = training_df['Driver_Recent_Form'].fillna(15.0)
-    
     training_df = pd.merge(training_df, team_form, on='Team', how='left')
+    
+    # Rookies inherit team form, otherwise 15.0
+    training_df['Driver_Recent_Form'] = training_df['Driver_Recent_Form'].fillna(training_df['Team_Recent_Form']).fillna(15.0)
     training_df['Team_Recent_Form'] = training_df['Team_Recent_Form'].fillna(15.0)
     
-    # Train the model live!
+    # --- 4. Train the model live with strict rules to prevent overfitting! ---
     features = ['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']
     X = training_df[features]
     y = training_df['Race_Position']
     
+    # max_depth=4 stops the trees from overthinking. 
+    # min_samples_leaf=5 forces it to base predictions on a consensus of at least 5 similar drivers!
     model = RandomForestRegressor(n_estimators=100, max_depth=4, min_samples_leaf=5, random_state=42)
     model.fit(X, y)
     

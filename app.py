@@ -99,13 +99,12 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         
                         # Map Recent Form
                         prediction_df = pd.merge(prediction_df, driver_form, on='Driver', how='left')
-                        # If a driver is a rookie, give them the car's average form!
-                        prediction_df['Driver_Recent_Form'] = prediction_df['Driver_Recent_Form'].fillna(prediction_df['Team_Recent_Form']).fillna(15.0)
-
-                        
                         prediction_df = pd.merge(prediction_df, team_form, on='Team', how='left')
                         prediction_df['Team_Recent_Form'] = prediction_df['Team_Recent_Form'].fillna(15.0)
                         
+                        # If a driver is a rookie, give them the car's average form!
+                        prediction_df['Driver_Recent_Form'] = prediction_df['Driver_Recent_Form'].fillna(prediction_df['Team_Recent_Form']).fillna(15.0)
+
                         # Fetch Qualifying
                         from data_pipeline import get_qualifying_results
                         qualy_results = get_qualifying_results(year, event)
@@ -144,6 +143,27 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         else:
                             # Display just the final prediction
                             st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']], hide_index=True)
+                else:
+                    st.warning("⚠️ Welcome to a New Era! Because this is the first race of the new regulations, there is NO historical data to train the ML model.")
+                    st.info("🔮 Falling back to predicting based purely on Free Practice 2 Pace!")
+                    
+                    with st.spinner("Running Heuristic Predictions..."):
+                        # Just grab the FP2 pace and rank them exactly as they are
+                        prediction_df = pace_df.groupby('Driver').first().reset_index()
+                        prediction_df['Predicted_Finish'] = prediction_df['FP2_Avg_Pace_s'].rank(method='first')
+                        prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
+                        
+                        from data_pipeline import get_race_results
+                        actual_results = get_race_results(year, event)
+                        
+                        if actual_results is not None and not actual_results.empty:
+                            prediction_df = pd.merge(prediction_df, actual_results[['Driver', 'Race_Position', 'Status']], on='Driver', how='outer')
+                            prediction_df.rename(columns={'Race_Position': 'Actual_Finish', 'Status': 'Race_Status'}, inplace=True)
+                            prediction_df = prediction_df.sort_values('Actual_Finish').reset_index(drop=True)
+                            st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish', 'Actual_Finish', 'Race_Status']], hide_index=True)
+                        else:
+                            st.dataframe(prediction_df[['Driver', 'Team', 'Predicted_Finish']], hide_index=True)
+            
 
         else:
             st.error("Failed to load FP2 data. The session might have been rained out, cancelled, or it was a Sprint weekend!")
