@@ -119,11 +119,14 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         prediction_df = pd.merge(prediction_df, team_form, on='Team', how='left')
                         prediction_df['Team_Recent_Form'] = prediction_df['Team_Recent_Form'].fillna(15.0)
                         
-                        prediction_df = pd.merge(prediction_df, track_affinity, on='Driver', how='left')
-                        prediction_df['Driver_Track_History'] = prediction_df['Driver_Track_History'].fillna(prediction_df['Driver_Recent_Form']).round(1)
-
-                        # If a driver is a rookie, give them the car's average form!
+                        # 1. DO THE ROOKIE FALLBACK FIRST!
+                        # If a driver has no momentum, give them the car's average form!
                         prediction_df['Driver_Recent_Form'] = prediction_df['Driver_Recent_Form'].fillna(prediction_df['Team_Recent_Form']).fillna(15.0)
+                        
+                        # 2. THEN DO THE TRACK HISTORY FALLBACK!
+                        prediction_df = pd.merge(prediction_df, track_affinity, on='Driver', how='left')
+                        # Apply a +4.0 penalty to rookies to simulate their lack of track experience compared to veterans
+                        prediction_df['Driver_Track_History'] = prediction_df['Driver_Track_History'].fillna(prediction_df['Driver_Recent_Form'] + 4.0).round(1)
 
                         # --- 3. PREDICT LIVE ---
                         prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'Driver_Track_History', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
