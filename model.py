@@ -247,7 +247,15 @@ def build_dynamic_model(target_year, target_event_name):
     # --- 4. Train the model live with strict rules to prevent overfitting! ---
     features = ['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'Driver_Track_History', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']
     X = training_df[features]
-    y = training_df['Race_Position']
+    
+    # Map Race Position to F1 Points so the model focuses entirely on the Top 10!
+    def map_points(pos):
+        points = {1:25, 2:18, 3:15, 4:12, 5:10, 6:8, 7:6, 8:4, 9:2, 10:1}
+        return points.get(pos, 0.0)
+        
+    training_df['Points'] = training_df['Race_Position'].apply(map_points)
+    y = training_df['Points']
+
     
     # max_depth=4 stops the trees from overthinking. 
     # min_samples_leaf=5 forces it to base predictions on a consensus of at least 5 similar drivers!

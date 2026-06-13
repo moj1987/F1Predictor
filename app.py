@@ -131,8 +131,8 @@ if st.sidebar.button("Analyze FP2 Pace"):
                         # --- 3. PREDICT LIVE ---
                         prediction_df['Predicted_Finish'] = model.predict(prediction_df[['Pace_Rank', 'Driver_Recent_Form', 'Team_Recent_Form', 'Driver_Track_History', 'GridPosition', 'Track_Type', 'Tire_Deg_Rate']])
                         
-                        # Convert raw scores into an exact 1-N ranking
-                        prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank(method='first')
+                        # Convert predicted POINTS into a 1-N ranking (ascending=False means highest points gets 1st place!)
+                        prediction_df['Predicted_Finish'] = prediction_df['Predicted_Finish'].rank(method='first', ascending=False)
                         
                         # Sort by the predicted finish initially
                         prediction_df = prediction_df.sort_values('Predicted_Finish').reset_index(drop=True)
