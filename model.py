@@ -98,19 +98,30 @@ def get_track_history(target_year, target_event_name, num_years=3):
     
     historical_results = []
     
+    try:
+        # 1. Get the target event's Country/Location to avoid Sponsor Name Changes!
+        target_schedule = fastf1.get_event_schedule(target_year)
+        target_event = target_schedule[target_schedule['EventName'] == target_event_name]
+        if target_event.empty: return pd.DataFrame(columns=['Driver', 'Driver_Track_History'])
+        
+        target_country = target_event.iloc[0]['Country']
+        target_location = target_event.iloc[0]['Location']
+    except Exception:
+        return pd.DataFrame(columns=['Driver', 'Driver_Track_History'])
+    
     for y in range(target_year - 1, target_year - 1 - num_years, -1):
         try:
-            # Check if this event existed in year 'y'
             schedule = fastf1.get_event_schedule(y)
-            event = schedule[schedule['EventName'] == target_event_name]
+            # Match safely by Country and Location!
+            event = schedule[(schedule['Country'] == target_country) & (schedule['Location'] == target_location)]
             if not event.empty:
-                actual = get_race_results(y, target_event_name)
+                historical_event_name = event.iloc[0]['EventName']
+                actual = get_race_results(y, historical_event_name)
                 if actual is not None and not actual.empty:
-                    # Treat DNFs as 20th place
                     actual['Race_Position'] = pd.to_numeric(actual['Race_Position'], errors='coerce').fillna(20.0)
                     historical_results.append(actual[['Driver', 'Race_Position']])
         except Exception:
-            pass # Ignore if the race was cancelled that year
+            pass 
             
     if historical_results:
         all_hist = pd.concat(historical_results, ignore_index=True)
@@ -118,7 +129,6 @@ def get_track_history(target_year, target_event_name, num_years=3):
         track_affinity.rename(columns={'Race_Position': 'Driver_Track_History'}, inplace=True)
         return track_affinity
     else:
-        # Return an empty dataframe if the track is completely new
         return pd.DataFrame(columns=['Driver', 'Driver_Track_History'])
 
 def build_dynamic_model(target_year, target_event_name):
@@ -132,20 +142,30 @@ def build_dynamic_model(target_year, target_event_name):
     
     # Inject historical data for THIS EXACT TRACK!
     import fastf1
-    for y in range(target_year - 1, target_year - 4, -1):
-        try:
-            schedule = fastf1.get_event_schedule(y)
-            event_row = schedule[schedule['EventName'] == target_event_name]
-            if not event_row.empty:
-                # Only add it if it's not already in past_events!
-                if not any(pe['year'] == y and pe['event'] == target_event_name for pe in past_events):
-                    past_events.append({
-                        'year': y,
-                        'event': target_event_name,
-                        'track_type': target_track_type
-                    })
-        except Exception:
-            pass
+    try:
+        target_schedule = fastf1.get_event_schedule(target_year)
+        target_event = target_schedule[target_schedule['EventName'] == target_event_name]
+        if not target_event.empty:
+            target_country = target_event.iloc[0]['Country']
+            target_location = target_event.iloc[0]['Location']
+            
+            for y in range(target_year - 1, target_year - 4, -1):
+                try:
+                    schedule = fastf1.get_event_schedule(y)
+                    # Match safely by Country and Location!
+                    event_row = schedule[(schedule['Country'] == target_country) & (schedule['Location'] == target_location)]
+                    if not event_row.empty:
+                        historical_event_name = event_row.iloc[0]['EventName']
+                        if not any(pe['year'] == y and pe['event'] == historical_event_name for pe in past_events):
+                            past_events.append({
+                                'year': y,
+                                'event': historical_event_name,
+                                'track_type': target_track_type
+                            })
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
     if not past_events:
         return None, None, None
