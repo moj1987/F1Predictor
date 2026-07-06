@@ -220,7 +220,16 @@ def build_dynamic_model(target_year, target_event_name):
         actual = get_race_results(year, event)
         if actual is None or actual.empty: continue
             
-        laps = get_session_laps(year, event, 'FP2')
+        schedule = fastf1.get_event_schedule(year)
+        event_row = schedule[schedule['EventName'] == event].iloc[0]
+        
+        # Check if this is a sprint weekend format
+        if event_row['EventFormat'] in ['sprint', 'sprint_shootout', 'sprint_qualifying']:
+            print(f"Sprint weekend detected for {event}. Using Sprint data instead of FP2.")
+            laps = get_session_laps(year, event, 'S')
+        else:
+            laps = get_session_laps(year, event, 'FP2')
+            
         if laps is None or laps.empty: continue
         clean = clean_laps(laps)
         long_runs = extract_long_runs(clean)

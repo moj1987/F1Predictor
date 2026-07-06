@@ -44,7 +44,15 @@ except Exception as e:
 if st.sidebar.button("Analyze FP2 Pace"):
     with st.spinner(f"Fetching {year} {event} FP2 Data... (FastF1 is downloading telemetry)"):
         # 1. Fetch
-        laps = get_session_laps(year, event, 'FP2')
+        # --- NEW SPRINT LOGIC FOR APP.PY ---
+        event_row = schedule[schedule['EventName'] == event].iloc[0]
+        if event_row['EventFormat'] in ['sprint', 'sprint_shootout', 'sprint_qualifying']:
+            st.info("Sprint weekend detected! Using Sprint Race data instead of FP2.")
+            laps = get_session_laps(year, event, 'S')
+        else:
+            laps = get_session_laps(year, event, 'FP2')
+        # -----------------------------------
+
         
         if laps is not None and not laps.empty:
             # 2. Clean & Extract
